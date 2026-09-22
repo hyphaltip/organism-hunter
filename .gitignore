@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Common output/scratch artifacts from running the tool
+*.sig
+*.sig.zip
+*.fasta
+*.fna
+report.json
+*.geojson
+logan_verify/
+uploaded_query.fasta
+uploaded_signature.sig.zip
