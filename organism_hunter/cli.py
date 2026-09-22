@@ -155,13 +155,31 @@ def stat_search_cmd(name, project, limit, output, estimate_only, yes):
 @main.command("logan-verify")
 @click.argument("accessions_file", type=click.Path(exists=True))
 @click.argument("query_fasta", type=click.Path(exists=True))
-@click.option("--contigs", "use_contigs", is_flag=True, help="Use contigs instead of unitigs.")
+@click.option("--unitigs", "use_unitigs", is_flag=True, help="Search unitigs instead of contigs (more sensitive; contigs are the default).")
+@click.option("--limit", type=int, default=None, help="Only process the first N accessions (each one is downloaded from S3).")
+@click.option("-k", "--kmer-size", type=int, default=None, help="K-mer size for recruitment (logan_blaster default: 17).")
 @click.option("-o", "--out-dir", default="logan_verify", show_default=True)
-def logan_verify_cmd(accessions_file: str, query_fasta: str, use_contigs: bool, out_dir: str):
-    """BLAST QUERY_FASTA against each accession's Logan assembly (local verification)."""
-    with open(accessions_file) as f:
-        accessions = [line.strip() for line in f if line.strip()]
-    out = logan.verify_hits(accessions, query_fasta, use_contigs=use_contigs, out_dir=out_dir)
+def logan_verify_cmd(accessions_file, query_fasta, use_unitigs, limit, kmer_size, out_dir):
+    """BLAST QUERY_FASTA against each accession's Logan assembly (local verification).
+
+    ACCESSIONS_FILE is either one SRA accession per line (.txt), or a .csv whose
+    first column holds accessions -- so a branchwater-search CSV works. Each
+    accession's assembly is downloaded from the public Logan S3 bucket, so use
+    --limit when spot-checking a long list.
+    """
+    try:
+        accessions = logan.read_accessions(accessions_file)
+        console.print(f"{len(accessions)} accessions; running {min(limit, len(accessions)) if limit else len(accessions)}.")
+        out = logan.verify_hits(
+            accessions=accessions,
+            query_fasta=query_fasta,
+            use_unitigs=use_unitigs,
+            out_dir=out_dir,
+            kmer_size=kmer_size,
+            limit=limit,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise click.ClickException(str(e)) from e
     console.print(f"Results in {out}")
 
 

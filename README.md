@@ -43,7 +43,22 @@ packages:
   `tar xJf` it, and put the extracted `branchwater-client` binary on PATH. On
   macOS, Gatekeeper quarantines downloaded binaries; if it refuses to run,
   clear that with `xattr -d com.apple.quarantine /path/to/branchwater-client`.
-- **logan_blaster**: see [pierrepeterlongo/logan_blaster](https://github.com/pierrepeterlongo/logan_blaster)
+- **logan_blaster**: not on PyPI, so it cannot go in the uv/pip environment —
+  it's a bioconda package that drives BLAST, `back_to_sequences`,
+  `count_tig_coverage` and `jq`:
+  ```bash
+  mamba create -y -n logan_blaster -c conda-forge -c bioconda logan_blaster
+  ```
+  You don't have to activate that env to use it here — just point the wrapper
+  at the binary:
+  ```bash
+  export LOGAN_BLASTER_BIN=~/miniconda3/envs/logan_blaster/bin/logan_blaster
+  ```
+  (`logan_blaster` calls `back_to_sequences`, `blastn`, `count_logan_tig_coverage`
+  and `jq` by bare name, so pointing at the binary alone would fail with
+  `'back_to_sequences' could not be found`. The wrapper therefore prepends that
+  binary's directory to PATH for the subprocess, which makes the unactivated
+  case work — verified against a real run.)
 
 For STAT/BigQuery:
 
@@ -84,8 +99,10 @@ organism-hunter branchwater-search its.sig -o branchwater_hits.csv
 # 4. Or search all of SRA by k-mer taxonomy (needs GOOGLE_CLOUD_PROJECT set).
 organism-hunter stat-search "Amanita muscaria" -o stat_hits.csv   # needs ORGANISM_HUNTER_ENABLE_STAT=1
 
-# 5. Confirm a candidate hit by aligning against its actual Logan assembly.
-organism-hunter logan-verify branchwater_hits_accessions.txt its.fasta
+# 5. Confirm candidate hits by aligning against their actual Logan assemblies.
+#    (Each accession's assembly is downloaded from S3, so --limit when spot-checking.)
+cut -d, -f1 branchwater_hits.csv | tail -n +2 > accessions.txt
+organism-hunter logan-verify accessions.txt its.fasta --limit 5
 
 # Or do 1+3 together and get one combined report + map (STAT stays off):
 organism-hunter report "Amanita muscaria" --signature its.sig \
@@ -138,6 +155,20 @@ organism-hunter report "Saccharomyces cerevisiae" --signature scer.sig \
 geolocated SRA hits -- e.g. an anaerobic digester metagenome from Greece never
 labeled as containing yeast. That's the actual payoff of this tool: sequence
 evidence of an organism's presence somewhere GBIF has no record of it.
+
+Then Logan confirmed one of those hits at the sequence level:
+
+```bash
+organism-hunter logan-verify hits.csv query_small.fa --limit 2 -o logan_out
+```
+
+Against **SRR15417138** — a *human gut metagenome* that Branchwater scored at
+0.41 containment — BLAST found real yeast sequence in the sample's assembled
+contigs, including a **97% identity** match (270 bits, E=5e-72) and a longer
+73%-identity match covering 59% of the query. So the k-mer hit isn't a sketch
+artifact: *S. cerevisiae* DNA is genuinely in that gut sample. This is the
+three-stage pipeline working as intended — Branchwater finds candidates cheaply
+across a million datasets, Logan proves one right by alignment.
 
 STAT/BigQuery was not run (it is off by default). Its table schemas *were*
 verified against the live BigQuery tables, and its query costs measured with
@@ -214,7 +245,12 @@ it** (~$6.25/TB after). Guards built in as a result:
 - **Logan-Search** (the hosted k-mer index/dashboard) has no REST API as of
   this writing, so it isn't called automatically. `organism_hunter.logan`
   covers the part that *is* scriptable: BLASTing a query against a known
-  accession's public Logan assembly for confirmation.
+  accession's public Logan assembly for confirmation. Interface verified
+  against the tool's own docs: it takes `-a/--accessions` + `-q/--query` (or
+  `-s/--session` for a Logan-Search kmviz id), defaults to **contigs** with
+  `-u` selecting unitigs, and has **no output-directory flag** — it writes
+  `alignments/`, `logan_data/` and `input_data/` into the working directory,
+  so the wrapper runs it with `cwd` set to your chosen `--out-dir`.
 
 ## Tests
 

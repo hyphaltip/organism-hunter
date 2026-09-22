@@ -93,20 +93,20 @@ def _parse_csv(csv_text: str) -> list[SraHit]:
     hits: list[SraHit] = []
     reader = csv.DictReader(csv_text.splitlines())
     for row in reader:
-        accession = (
+        accession = _none_if_null(
             row.get("acc")
             or row.get("SRA accession")
             or row.get("accession")
             or row.get("SRA_accession")
         )
         if not accession:
-            continue
+            continue  # includes rows that are entirely "NP"/null sentinels
         score_raw = row.get("containment") or row.get("cANI") or row.get("f_match_query")
         hits.append(
             SraHit(
                 accession=accession,
                 source="branchwater",
-                score=float(score_raw) if score_raw not in (None, "", "null") else None,
+                score=float(score_raw) if score_raw not in _MISSING else None,
                 organism=_none_if_null(row.get("organism")),
                 bioproject=_none_if_null(row.get("bioproject") or row.get("bioproject_acc")),
                 biosample=_none_if_null(row.get("biosample") or row.get("biosample_acc")),
@@ -128,6 +128,11 @@ def _parse_csv(csv_text: str) -> list[SraHit]:
     return hits
 
 
+#: Sentinels branchwater-client's --full CSV uses for missing values: "null"
+#: and "NP" (not provided). A row can have "NP" in *every* field including the
+#: accession, which is unusable, so such rows are dropped entirely.
+_MISSING = (None, "", "null", "NP")
+
+
 def _none_if_null(value: str | None) -> str | None:
-    """branchwater-client's --full CSV renders missing fields as the string "null"."""
-    return None if value in (None, "", "null") else value
+    return None if value in _MISSING else value

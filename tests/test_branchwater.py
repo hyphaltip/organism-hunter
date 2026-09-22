@@ -40,3 +40,20 @@ def test_parse_csv_full_output_with_null_literals_and_bracket_latlon():
 
     b = hits[1]
     assert b.lat_lon is None  # "null" literal -> None
+
+
+def test_parse_csv_drops_all_NP_rows():
+    """Real output ends with rows where every field is "NP" (not provided).
+
+    An "NP" accession can't be looked up in Logan/SRA, so the row is useless
+    and must be dropped rather than passed downstream.
+    """
+    csv_text = (
+        "acc,assay_type,bioproject,cANI,collection_date_sam,containment,"
+        "geo_loc_name_country_calc,lat_lon,organism\n"
+        "SRR26903947,WGS,PRJNA1,0.9,null,0.26,Saudi Arabia,null,human metagenome\n"
+        "NP,branchwater,NP,NP,NP,0.31,NP,NP,NP\n"
+        "NP,branchwater,NP,NP,NP,0.15,NP,NP,NP\n"
+    )
+    hits = _parse_csv(csv_text)
+    assert [h.accession for h in hits] == ["SRR26903947"]
