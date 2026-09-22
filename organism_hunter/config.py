@@ -25,7 +25,7 @@ SRA_METADATA_TABLE = "nih-sra-datastore.sra.metadata"
 
 BRANCHWATER_SERVER = os.environ.get("BRANCHWATER_SERVER", "https://api.branchwater.sourmash.bio")
 BRANCHWATER_METADATA_SERVER = os.environ.get(
-    "BRANCHWATER_METADATA_SERVER", "https://branchwater.jgi.doe.gov"
+    "BRANCHWATER_METADATA_SERVER", "https://branchwater.sourmash.bio"
 )
 BRANCHWATER_CLIENT_BIN = os.environ.get("BRANCHWATER_CLIENT_BIN", "branchwater-client")
 

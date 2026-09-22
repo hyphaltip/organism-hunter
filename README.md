@@ -31,10 +31,19 @@ uv pip install -e ".[bigquery]"     # + STAT/BigQuery support
 uv pip install -e ".[dashboard]"    # + Streamlit UI
 ```
 
-External binaries not installable via pip:
-- `sourmash` (for building query signatures): `pip install sourmash` or `conda install -c bioconda sourmash`
-- `branchwater-client` (for Branchwater search): download from the [releases page](https://github.com/sourmash-bio/branchwater/releases)
-- `logan_blaster` (for local BLAST confirmation of hits): see [pierrepeterlongo/logan_blaster](https://github.com/pierrepeterlongo/logan_blaster)
+```bash
+uv pip install -e ".[signatures]"   # + sourmash, for building query signatures
+```
+
+`branchwater-client` and `logan_blaster` are Rust/compiled binaries, not pip
+packages:
+- **branchwater-client**: download the archive for your platform from the
+  [releases page](https://github.com/sourmash-bio/branchwater/releases)
+  (e.g. `branchwater-client-aarch64-apple-darwin.tar.xz` for Apple Silicon),
+  `tar xJf` it, and put the extracted `branchwater-client` binary on PATH. On
+  macOS, Gatekeeper quarantines downloaded binaries; if it refuses to run,
+  clear that with `xattr -d com.apple.quarantine /path/to/branchwater-client`.
+- **logan_blaster**: see [pierrepeterlongo/logan_blaster](https://github.com/pierrepeterlongo/logan_blaster)
 
 For STAT/BigQuery, set `GOOGLE_CLOUD_PROJECT` to a Google Cloud project of
 yours with the BigQuery API enabled and `gcloud auth application-default
@@ -50,10 +59,10 @@ organism-hunter gbif "Amanita muscaria" --geojson occurrences.geojson
 # 2. Get something to search SRA with: either your own FASTA, a barcode
 #    pulled from NCBI, or a reference genome.
 organism-hunter fetch-barcode "Amanita muscaria" --gene ITS -o its.fasta
-organism-hunter build-signature its.fasta -o its.sig.zip
+organism-hunter build-signature its.fasta -o its.sig
 
 # 3. Search SRA metagenomes for that signature.
-organism-hunter branchwater-search its.sig.zip -o branchwater_hits.csv
+organism-hunter branchwater-search its.sig -o branchwater_hits.csv
 
 # 4. Or search all of SRA by k-mer taxonomy (needs GOOGLE_CLOUD_PROJECT set).
 organism-hunter stat-search "Amanita muscaria" -o stat_hits.csv
@@ -62,7 +71,7 @@ organism-hunter stat-search "Amanita muscaria" -o stat_hits.csv
 organism-hunter logan-verify branchwater_hits_accessions.txt its.fasta
 
 # Or do 1+3+4 together and get one combined report + map:
-organism-hunter report "Amanita muscaria" --signature its.sig.zip \
+organism-hunter report "Amanita muscaria" --signature its.sig \
     --stat-project my-gcp-project -o report.json --geojson combined.geojson
 ```
 
@@ -83,10 +92,34 @@ from organism_hunter import gbif, report
 taxon = gbif.match_taxon("Amanita muscaria")
 occurrences, total = gbif.search_occurrences(taxon.usage_key, max_records=500)
 
-rep = report.build_report("Amanita muscaria", signature_path="its.sig.zip",
+rep = report.build_report("Amanita muscaria", signature_path="its.sig",
                            stat_project="my-gcp-project")
 report.write_report(rep, "report.json")
 ```
+
+## Verified smoke test
+
+*Saccharomyces cerevisiae* is a good end-to-end smoke test: a tiny (~12 Mb)
+genome that sketches in seconds, and a near-ubiquitous low-level contaminant
+of public metagenomes, so a real run should never come back with zero SRA
+hits. This exact sequence was run live against production GBIF, NCBI, and
+Branchwater servers while building this tool:
+
+```bash
+organism-hunter fetch-genome "Saccharomyces cerevisiae" -o scer.fasta   # 12.3 MB, 17 sequences
+organism-hunter build-signature scer.fasta -o scer.sig --name "Saccharomyces cerevisiae S288C"
+organism-hunter branchwater-search scer.sig -o hits.csv                # 5,355 hits above containment 0.1
+organism-hunter report "Saccharomyces cerevisiae" --signature scer.sig \
+    --no-stat --max-occurrences 50 -o report.json --geojson combined.geojson
+```
+
+`combined.geojson` came back with 7 GBIF collection points and 2,021
+geolocated SRA hits -- e.g. an anaerobic digester metagenome from Greece never
+labeled as containing yeast. That's the actual payoff of this tool: sequence
+evidence of an organism's presence somewhere GBIF has no record of it.
+
+STAT/BigQuery wasn't exercised in this run (no GCP project configured); it's
+architecturally identical to Branchwater above once `GOOGLE_CLOUD_PROJECT` is set.
 
 ## Notes on the SRA backends
 
@@ -98,8 +131,17 @@ report.write_report(rep, "report.json")
   building its `SELECT` rather than assuming a fixed schema.
 - **Branchwater** has no documented plain-HTTP contract for scripted search;
   this project shells out to the official `branchwater-client` binary and
-  parses its CSV output. If a future release changes that CSV's column names,
-  update the field lookups in `organism_hunter/branchwater.py::_parse_csv`.
+  parses its CSV output. Verified live against v0.6.3 and `api.branchwater.sourmash.bio`:
+  - it wants a plain `.sig` (uncompressed JSON); a `.sig.zip` container fails
+    to parse client-side, hence `signatures.build_signature`'s default output.
+  - there is no `--threshold` flag in this release, so `branchwater.search()`
+    filters by containment/cANI client-side after the full result comes back.
+  - `--full` and non-`--full` output different CSV headers (`acc` vs.
+    `"SRA accession"`; `assay_type` instead of a strategy/source split; missing
+    fields render as the literal string `"null"`; `lat_lon` comes back as a
+    `"[lat,lon]"` string) — all handled in `_parse_csv`/`_parse_lat_lon`.
+  If a future release changes any of this, update
+  `organism_hunter/branchwater.py::_parse_csv`.
 - **Logan-Search** (the hosted k-mer index/dashboard) has no REST API as of
   this writing, so it isn't called automatically. `organism_hunter.logan`
   covers the part that *is* scriptable: BLASTing a query against a known

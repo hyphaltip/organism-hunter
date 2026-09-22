@@ -11,6 +11,11 @@ def test_parse_lat_lon_plain_decimal():
     assert _parse_lat_lon("38.98 -76.93") == (38.98, -76.93)
 
 
+def test_parse_lat_lon_branchwater_bracket_format():
+    """Real format seen from branchwater-client --full: a JSON array as a string."""
+    assert _parse_lat_lon("[37.4335,-122.1754]") == (37.4335, -122.1754)
+
+
 def test_parse_lat_lon_invalid_returns_none():
     assert _parse_lat_lon(None) is None
     assert _parse_lat_lon("garbage") is None

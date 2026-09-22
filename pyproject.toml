@@ -3,7 +3,7 @@ name = "organism-hunter"
 version = "0.1.0"
 description = "Cross-reference GBIF specimen occurrence records with sequence-level detections of an organism in public SRA metagenomes (via NCBI STAT/BigQuery and Branchwater sourmash search), with Logan-based sequence verification."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "requests>=2.31",
   "click>=8.1",
@@ -14,8 +14,9 @@ dependencies = [
 [project.optional-dependencies]
 bigquery = ["google-cloud-bigquery>=3.20"]
 dashboard = ["streamlit>=1.35", "pydeck>=0.9"]
+signatures = ["sourmash>=4.9"]
 dev = ["pytest>=8.0", "responses>=0.25", "ruff>=0.5"]
-all = ["organism-hunter[bigquery,dashboard,dev]"]
+all = ["organism-hunter[bigquery,dashboard,signatures,dev]"]
 
 [project.scripts]
 organism-hunter = "organism_hunter.cli:main"

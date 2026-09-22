@@ -8,6 +8,11 @@ signature is actually built.
 Branchwater's public index (as of this writing) is built at k=21, scaled=1000,
 so signatures built here default to matching parameters -- a signature built
 at a different k/scaled will simply return no hits, not an error.
+
+Output defaults to a plain `.sig` (uncompressed JSON), not `.sig.zip`:
+`branchwater-client --sig` (as of v0.6.3) fails to parse the zip container
+("expected value at line 1 column 1", i.e. it tries to JSON-parse zip bytes)
+even though sourmash itself reads/writes `.sig.zip` happily.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ def build_signature(
             "or `conda install -c bioconda sourmash`."
         )
     fasta_path = Path(fasta_path)
-    out_path = Path(out_path) if out_path else fasta_path.with_suffix(".sig.zip")
+    out_path = Path(out_path) if out_path else fasta_path.with_suffix(".sig")
 
     cmd = [
         SOURMASH_BIN,

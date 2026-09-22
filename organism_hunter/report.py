@@ -76,9 +76,21 @@ def write_report(report: OrganismReport, out_path: str | Path) -> Path:
 
 
 def _parse_lat_lon(lat_lon: str | None) -> tuple[float, float] | None:
-    """Parse INSDC-style "38.98 N 76.93 W" or plain "38.98 -76.93" lat_lon strings."""
+    """Parse lat_lon strings in the formats actually seen in the wild:
+
+    - INSDC-style: "38.98 N 76.93 W"
+    - Plain decimal: "38.98 -76.93"
+    - Branchwater's --full CSV: "[37.4335,-122.1754]" (a JSON array as a string)
+    """
     if not lat_lon:
         return None
+    lat_lon = lat_lon.strip()
+    if lat_lon.startswith("[") and lat_lon.endswith("]"):
+        try:
+            lat, lon = json.loads(lat_lon)
+            return float(lat), float(lon)
+        except (ValueError, TypeError):
+            return None
     tokens = lat_lon.split()
     try:
         if len(tokens) == 4:
