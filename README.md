@@ -45,10 +45,25 @@ packages:
   clear that with `xattr -d com.apple.quarantine /path/to/branchwater-client`.
 - **logan_blaster**: see [pierrepeterlongo/logan_blaster](https://github.com/pierrepeterlongo/logan_blaster)
 
-For STAT/BigQuery, set `GOOGLE_CLOUD_PROJECT` to a Google Cloud project of
-yours with the BigQuery API enabled and `gcloud auth application-default
-login` run once. For higher NCBI E-utilities rate limits, optionally set
-`NCBI_API_KEY` and `NCBI_EMAIL`.
+For STAT/BigQuery:
+
+```bash
+gcloud auth application-default login          # once; writes ADC credentials
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+gcloud services enable bigquery.googleapis.com --project=YOUR_PROJECT_ID
+export GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID    # add to ~/.zshrc to persist
+```
+
+Verify the setup without spending anything (dry runs are free):
+
+```bash
+organism-hunter stat-search "Saccharomyces cerevisiae" --estimate-only
+```
+
+`GOOGLE_CLOUD_PROJECT` is read by `organism_hunter/config.py`; every STAT
+command also accepts `--project`/`--stat-project` if you'd rather not export
+it. For higher NCBI E-utilities rate limits, optionally set `NCBI_API_KEY` and
+`NCBI_EMAIL`.
 
 ## CLI usage
 
@@ -123,12 +138,45 @@ architecturally identical to Branchwater above once `GOOGLE_CLOUD_PROJECT` is se
 
 ## Notes on the SRA backends
 
-- **STAT** table/column names are based on NCBI's published docs
-  ([blog post](https://ncbiinsights.ncbi.nlm.nih.gov/2020/04/27/sra-cloud-taxtables/),
-  [docs page](https://www.ncbi.nlm.nih.gov/sra/docs/sra-cloud-based-taxonomy-analysis-table/)).
-  `sra.metadata`'s harvested-BioSample-attribute columns drift over time, so
-  `sra_stat.enrich_with_metadata` checks `INFORMATION_SCHEMA.COLUMNS` before
-  building its `SELECT` rather than assuming a fixed schema.
+- **STAT** table/column names were verified directly against the live BigQuery
+  tables (not just NCBI's
+  [blog post](https://ncbiinsights.ncbi.nlm.nih.gov/2020/04/27/sra-cloud-taxtables/) /
+  [docs page](https://www.ncbi.nlm.nih.gov/sra/docs/sra-cloud-based-taxonomy-analysis-table/),
+  which omit several details):
+  - the taxonomy table's scientific-name column is **`sci_name`**, not `name`;
+    `names` is a repeated record of synonyms/common names (matched too).
+  - `sra.metadata` has **`assay_type`**, not `librarystrategy`, and has **no
+    lat/lon column at all** — STAT geography is country-level only, so STAT
+    hits do not appear as points on the combined map (Branchwater hits do,
+    because its own metadata server returns coordinates).
+  - `sra.metadata`'s harvested-BioSample columns drift, so
+    `enrich_with_metadata` still checks `INFORMATION_SCHEMA.COLUMNS` first.
+
+### ⚠️ STAT query costs (read before enabling)
+
+`sra_tax_analysis_tool.tax_analysis` is **1.55 TB across 17.6 billion rows**
+and is neither partitioned nor clustered — so `WHERE tax_id = ...` does *not*
+reduce bytes scanned, and neither does `LIMIT`. Measured dry-run costs for one
+taxon lookup:
+
+| Query | Scanned |
+|---|---|
+| `SELECT acc` | 365 GB |
+| `SELECT acc, total_count` (what this tool uses) | 506 GB |
+| `SELECT acc, tax_id, total_count, self_count` | 646 GB |
+| `+ rank, name` | 1.13 TB |
+
+BigQuery's free tier is 1 TB/month, so **a single careless query can consume
+it** (~$6.25/TB after). Guards built in as a result:
+
+- STAT is **opt-in**: `report --with-stat`, and off by default in the dashboard.
+- `stat-search` prints the exact cost from a **free dry run** and asks for
+  confirmation; `--estimate-only` shows cost and exits, `--yes` skips the prompt.
+- Every job sets `maximum_bytes_billed` (default 1 TiB, override with
+  `ORGANISM_HUNTER_MAX_BYTES_BILLED`) so a surprise query **fails instead of
+  billing**.
+- Queries select the minimum columns needed; the `taxonomy` lookup is cheap
+  (~120 MB) since that table is only 0.4 GB.
 - **Branchwater** has no documented plain-HTTP contract for scripted search;
   this project shells out to the official `branchwater-client` binary and
   parses its CSV output. Verified live against v0.6.3 and `api.branchwater.sourmash.bio`:

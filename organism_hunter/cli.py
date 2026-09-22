@@ -108,8 +108,20 @@ def branchwater_search_cmd(signature_path: str, threshold: float, output: str | 
 @click.option("--project", default=None, help="GCP billing project (defaults to $GOOGLE_CLOUD_PROJECT).")
 @click.option("--limit", default=500, show_default=True)
 @click.option("-o", "--output", type=click.Path(), help="Write hits as CSV.")
-def stat_search_cmd(name: str, project: str | None, limit: int, output: str | None):
-    """Search NCBI STAT k-mer taxonomy tables (BigQuery) for NAME's tax_id."""
+@click.option(
+    "--estimate-only",
+    is_flag=True,
+    help="Show the tax_analysis cost via a free dry run and exit. (The taxonomy "
+    "name->taxid lookup it needs first is a real query, but only ~120 MB.)",
+)
+@click.option("--yes", is_flag=True, help="Skip the cost confirmation prompt.")
+def stat_search_cmd(name, project, limit, output, estimate_only, yes):
+    """Search NCBI STAT k-mer taxonomy tables (BigQuery) for NAME's tax_id.
+
+    The tax_analysis table is 1.55 TB / 17.6B rows and is not partitioned, so
+    this scans ~500 GB no matter how small --limit is. BigQuery's free tier is
+    1 TB/month, so the cost is shown and confirmed before anything is billed.
+    """
     from organism_hunter import sra_stat
 
     tax_id = sra_stat.find_tax_id(name, project=project)
@@ -117,6 +129,20 @@ def stat_search_cmd(name: str, project: str | None, limit: int, output: str | No
         console.print(f"No STAT tax_id found for {name!r}.")
         return
     console.print(f"tax_id={tax_id}")
+
+    est = sra_stat.estimate_hits_bytes(tax_id, limit=limit, project=project)
+    gb = est / 1e9
+    console.print(
+        f"[yellow]This query will scan {gb:,.1f} GB[/yellow] "
+        f"({gb / 1000:.2f} TB, ~{gb / 10:.0f}% of a 1 TB free tier; "
+        f"~${max(0.0, (est / 1024**4) * 6.25):,.2f} if the free tier is already used)."
+    )
+    if estimate_only:
+        return
+    if not yes and not click.confirm("Run it?", default=False):
+        console.print("Aborted; nothing was billed.")
+        return
+
     hits = sra_stat.hits_for_tax_id(tax_id, limit=limit, project=project)
     hits = sra_stat.enrich_with_metadata(hits, project=project)
     console.print(f"{len(hits)} hits.")
@@ -143,11 +169,14 @@ def logan_verify_cmd(accessions_file: str, query_fasta: str, use_contigs: bool, 
 @click.option("--threshold", default=0.1, show_default=True, help="Branchwater containment threshold.")
 @click.option("--stat-project", default=None, help="GCP billing project for STAT/BigQuery.")
 @click.option("--no-branchwater", is_flag=True)
-@click.option("--no-stat", is_flag=True)
+@click.option("--with-stat", is_flag=True, help="Also run the STAT/BigQuery search (scans ~500 GB, billed to your GCP project).")
 @click.option("-o", "--output", type=click.Path(), default="report.json", show_default=True)
 @click.option("--geojson", "geojson_out", type=click.Path(), help="Also write a combined GeoJSON of GBIF + geolocated SRA hits.")
-def report_cmd(name, signature_path, max_occurrences, threshold, stat_project, no_branchwater, no_stat, output, geojson_out):
-    """Build a combined GBIF + SRA (Branchwater/STAT) report for NAME."""
+def report_cmd(name, signature_path, max_occurrences, threshold, stat_project, no_branchwater, with_stat, output, geojson_out):
+    """Build a combined GBIF + SRA (Branchwater/STAT) report for NAME.
+
+    STAT is opt-in via --with-stat because each run scans ~500 GB of BigQuery.
+    """
     rep = report_mod.build_report(
         name,
         max_occurrences=max_occurrences,
@@ -155,7 +184,7 @@ def report_cmd(name, signature_path, max_occurrences, threshold, stat_project, n
         branchwater_threshold=threshold,
         stat_project=stat_project,
         run_branchwater=not no_branchwater,
-        run_stat=not no_stat,
+        run_stat=with_stat,
     )
     report_mod.write_report(rep, output)
     console.print(f"Wrote {output}")

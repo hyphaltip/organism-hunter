@@ -23,6 +23,11 @@ BIGQUERY_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")  # billing project, mu
 STAT_DATASET = "nih-sra-datastore.sra_tax_analysis_tool"
 SRA_METADATA_TABLE = "nih-sra-datastore.sra.metadata"
 
+# Hard ceiling on bytes any single BigQuery job may bill, so an unexpectedly
+# expensive query fails fast instead of silently eating the 1 TB/month free
+# tier (a single unfiltered tax_analysis scan can exceed it -- see sra_stat).
+MAX_BYTES_BILLED = int(os.environ.get("ORGANISM_HUNTER_MAX_BYTES_BILLED") or 1024**4)  # 1 TiB
+
 BRANCHWATER_SERVER = os.environ.get("BRANCHWATER_SERVER", "https://api.branchwater.sourmash.bio")
 BRANCHWATER_METADATA_SERVER = os.environ.get(
     "BRANCHWATER_METADATA_SERVER", "https://branchwater.sourmash.bio"

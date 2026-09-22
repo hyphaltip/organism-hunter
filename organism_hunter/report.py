@@ -18,13 +18,17 @@ def build_report(
     branchwater_threshold: float = 0.1,
     stat_project: str | None = None,
     run_branchwater: bool = True,
-    run_stat: bool = True,
+    run_stat: bool = False,
 ) -> OrganismReport:
     """Resolve a name in GBIF, pull occurrences, and (optionally) search SRA.
 
     STAT and Branchwater are best-effort: a missing GCP project or missing
     branchwater-client binary is recorded as a note rather than raising, so a
     partial report is still produced.
+
+    `run_stat` defaults to False deliberately: a STAT query scans ~500 GB of
+    BigQuery (half the 1 TB/month free tier) every time it runs, so it must be
+    opted into rather than firing as a side effect of asking for a report.
     """
     report = OrganismReport(query=query)
 

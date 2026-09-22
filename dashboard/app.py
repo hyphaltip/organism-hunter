@@ -38,7 +38,13 @@ with st.sidebar:
 
     st.subheader("STAT (BigQuery)")
     stat_project = st.text_input("GCP billing project", value="", help="Leave blank to use $GOOGLE_CLOUD_PROJECT")
-    run_stat = st.checkbox("Run STAT k-mer search", value=True)
+    run_stat = st.checkbox(
+        "Run STAT k-mer search",
+        value=False,
+        help="Scans ~500 GB of BigQuery per run (~half the 1 TB/month free tier), billed to your GCP project.",
+    )
+    if run_stat:
+        st.warning("STAT enabled: this will scan ~500 GB of BigQuery, billed to your GCP project.")
     run_branchwater = st.checkbox("Run Branchwater search", value=True)
 
     run = st.button("Search", type="primary")
