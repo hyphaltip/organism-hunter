@@ -124,13 +124,16 @@ def stat_search_cmd(name, project, limit, output, estimate_only, yes):
     """
     from organism_hunter import sra_stat
 
-    tax_id = sra_stat.find_tax_id(name, project=project)
-    if tax_id is None:
-        console.print(f"No STAT tax_id found for {name!r}.")
-        return
-    console.print(f"tax_id={tax_id}")
+    try:
+        tax_id = sra_stat.find_tax_id(name, project=project)
+        if tax_id is None:
+            console.print(f"No STAT tax_id found for {name!r}.")
+            return
+        console.print(f"tax_id={tax_id}")
 
-    est = sra_stat.estimate_hits_bytes(tax_id, limit=limit, project=project)
+        est = sra_stat.estimate_hits_bytes(tax_id, limit=limit, project=project)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
     gb = est / 1e9
     console.print(
         f"[yellow]This query will scan {gb:,.1f} GB[/yellow] "

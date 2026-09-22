@@ -17,7 +17,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from organism_hunter import gbif, signatures
+from organism_hunter import config, gbif, signatures
 from organism_hunter import report as report_mod
 
 st.set_page_config(page_title="Organism Hunter", layout="wide")
@@ -37,14 +37,18 @@ with st.sidebar:
     uploaded_sig = st.file_uploader("...or a pre-built sourmash signature (.sig/.sig.zip)", type=["sig", "zip"])
 
     st.subheader("STAT (BigQuery)")
-    stat_project = st.text_input("GCP billing project", value="", help="Leave blank to use $GOOGLE_CLOUD_PROJECT")
-    run_stat = st.checkbox(
-        "Run STAT k-mer search",
-        value=False,
-        help="Scans ~500 GB of BigQuery per run (~half the 1 TB/month free tier), billed to your GCP project.",
-    )
-    if run_stat:
-        st.warning("STAT enabled: this will scan ~500 GB of BigQuery, billed to your GCP project.")
+    if config.STAT_ENABLED:
+        stat_project = st.text_input("GCP billing project", value="", help="Leave blank to use $GOOGLE_CLOUD_PROJECT")
+        run_stat = st.checkbox(
+            "Run STAT k-mer search",
+            value=False,
+            help="Scans ~500 GB of BigQuery per run (~half the 1 TB/month free tier), billed to your GCP project.",
+        )
+        if run_stat:
+            st.warning("STAT enabled: this will scan ~500 GB of BigQuery, billed to your GCP project.")
+    else:
+        stat_project, run_stat = "", False
+        st.caption("STAT/BigQuery is off. Set ORGANISM_HUNTER_ENABLE_STAT=1 to enable (it's the only backend that costs money).")
     run_branchwater = st.checkbox("Run Branchwater search", value=True)
 
     run = st.button("Search", type="primary")

@@ -45,6 +45,7 @@ start billing (~$6.25/TB after). Accordingly:
 
 from __future__ import annotations
 
+from organism_hunter import config
 from organism_hunter.config import (
     BIGQUERY_PROJECT,
     MAX_BYTES_BILLED,
@@ -72,6 +73,10 @@ _CANDIDATE_METADATA_COLUMNS = [
 
 
 def _get_client(project: str | None):
+    # Read through the module so tests/callers can toggle it at runtime, and so
+    # every query path (including free dry runs) is gated by the same switch.
+    if not config.STAT_ENABLED:
+        raise RuntimeError(config.STAT_DISABLED_MESSAGE)
     try:
         from google.cloud import bigquery
     except ImportError as e:

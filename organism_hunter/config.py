@@ -28,6 +28,22 @@ SRA_METADATA_TABLE = "nih-sra-datastore.sra.metadata"
 # tier (a single unfiltered tax_analysis scan can exceed it -- see sra_stat).
 MAX_BYTES_BILLED = int(os.environ.get("ORGANISM_HUNTER_MAX_BYTES_BILLED") or 1024**4)  # 1 TiB
 
+# Master kill switch for the STAT/BigQuery backend, OFF by default: it is the
+# only metered backend (GBIF, Branchwater and Logan are free), and even its
+# cheap taxonomy lookup is a billed query. Nothing in this package will talk to
+# BigQuery until this is explicitly turned on.
+STAT_ENABLED = (os.environ.get("ORGANISM_HUNTER_ENABLE_STAT") or "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+STAT_DISABLED_MESSAGE = (
+    "STAT/BigQuery is disabled (it is the only backend that costs money: a single "
+    "tax_analysis query scans ~500 GB of a 1 TB/month free tier). Enable it with "
+    "ORGANISM_HUNTER_ENABLE_STAT=1. GBIF, Branchwater and Logan are unaffected."
+)
+
 BRANCHWATER_SERVER = os.environ.get("BRANCHWATER_SERVER", "https://api.branchwater.sourmash.bio")
 BRANCHWATER_METADATA_SERVER = os.environ.get(
     "BRANCHWATER_METADATA_SERVER", "https://branchwater.sourmash.bio"

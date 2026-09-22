@@ -54,9 +54,11 @@ gcloud services enable bigquery.googleapis.com --project=YOUR_PROJECT_ID
 export GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID    # add to ~/.zshrc to persist
 ```
 
-Verify the setup without spending anything (dry runs are free):
+STAT is disabled until you opt in (see [STAT is OFF by default](#stat-is-off-by-default)).
+Once enabled, check what a query would cost before running it:
 
 ```bash
+export ORGANISM_HUNTER_ENABLE_STAT=1
 organism-hunter stat-search "Saccharomyces cerevisiae" --estimate-only
 ```
 
@@ -80,13 +82,17 @@ organism-hunter build-signature its.fasta -o its.sig
 organism-hunter branchwater-search its.sig -o branchwater_hits.csv
 
 # 4. Or search all of SRA by k-mer taxonomy (needs GOOGLE_CLOUD_PROJECT set).
-organism-hunter stat-search "Amanita muscaria" -o stat_hits.csv
+organism-hunter stat-search "Amanita muscaria" -o stat_hits.csv   # needs ORGANISM_HUNTER_ENABLE_STAT=1
 
 # 5. Confirm a candidate hit by aligning against its actual Logan assembly.
 organism-hunter logan-verify branchwater_hits_accessions.txt its.fasta
 
-# Or do 1+3+4 together and get one combined report + map:
+# Or do 1+3 together and get one combined report + map (STAT stays off):
 organism-hunter report "Amanita muscaria" --signature its.sig \
+    -o report.json --geojson combined.geojson
+
+# Add STAT to that report too (opt-in; needs ORGANISM_HUNTER_ENABLE_STAT=1):
+organism-hunter report "Amanita muscaria" --signature its.sig --with-stat \
     --stat-project my-gcp-project -o report.json --geojson combined.geojson
 ```
 
@@ -125,7 +131,7 @@ organism-hunter fetch-genome "Saccharomyces cerevisiae" -o scer.fasta   # 12.3 M
 organism-hunter build-signature scer.fasta -o scer.sig --name "Saccharomyces cerevisiae S288C"
 organism-hunter branchwater-search scer.sig -o hits.csv                # 5,355 hits above containment 0.1
 organism-hunter report "Saccharomyces cerevisiae" --signature scer.sig \
-    --no-stat --max-occurrences 50 -o report.json --geojson combined.geojson
+    --max-occurrences 50 -o report.json --geojson combined.geojson
 ```
 
 `combined.geojson` came back with 7 GBIF collection points and 2,021
@@ -133,8 +139,9 @@ geolocated SRA hits -- e.g. an anaerobic digester metagenome from Greece never
 labeled as containing yeast. That's the actual payoff of this tool: sequence
 evidence of an organism's presence somewhere GBIF has no record of it.
 
-STAT/BigQuery wasn't exercised in this run (no GCP project configured); it's
-architecturally identical to Branchwater above once `GOOGLE_CLOUD_PROJECT` is set.
+STAT/BigQuery was not run (it is off by default). Its table schemas *were*
+verified against the live BigQuery tables, and its query costs measured with
+free dry runs -- see the cost table below.
 
 ## Notes on the SRA backends
 
@@ -151,6 +158,20 @@ architecturally identical to Branchwater above once `GOOGLE_CLOUD_PROJECT` is se
     because its own metadata server returns coordinates).
   - `sra.metadata`'s harvested-BioSample columns drift, so
     `enrich_with_metadata` still checks `INFORMATION_SCHEMA.COLUMNS` first.
+
+### STAT is OFF by default
+
+STAT/BigQuery is the only backend that costs money, so it ships disabled. Every
+BigQuery entry point — including the free dry runs, because the taxonomy lookup
+that precedes them is itself a billed query — refuses to run until you opt in:
+
+```bash
+export ORGANISM_HUNTER_ENABLE_STAT=1
+```
+
+With it off, `stat-search` exits with an explanation, `report --with-stat`
+records a note and continues, and the dashboard greys the option out. GBIF,
+Branchwater, and Logan are unaffected and work normally.
 
 ### ⚠️ STAT query costs (read before enabling)
 
